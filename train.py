@@ -11,12 +11,16 @@ from options import MonodepthOptions
 
 options = MonodepthOptions()
 opts = options.parse()
-if opts.refine and not opts.dropout:
-    from trainer_cspnall import Trainer
-elif opts.dropout:
-    from trainer_selflr import Trainer
+if opts.dis:
+    from trainer_dis import Trainer
 else:
-    from trainer_dep import Trainer
+    if opts.refine and not opts.dropout:
+        from trainer_cspnall import Trainer
+    elif opts.dropout:
+        from trainer_selflr import Trainer
+    else:
+        from trainer_dep import Trainer
+
 
 
 if __name__ == "__main__":

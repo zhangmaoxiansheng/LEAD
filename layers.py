@@ -142,7 +142,7 @@ class ConvBlock(nn.Module):
         super(ConvBlock, self).__init__()
 
         self.conv = Conv3x3(in_channels, out_channels, dilation=dilation)
-        self.nonlin = nn.ELU(inplace=True)
+        self.nonlin = nn.ELU(inplace=False)
 
     def forward(self, x):
         out = self.conv(x)

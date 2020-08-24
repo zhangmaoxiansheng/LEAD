@@ -172,7 +172,7 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
         self.conv1 = Conv3x3(inplanes, planes)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ELU(inplace=True)
+        self.relu = nn.ELU(inplace=False)
         self.conv2 = Conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes)
 

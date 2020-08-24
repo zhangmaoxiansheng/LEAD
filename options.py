@@ -124,6 +124,9 @@ class MonodepthOptions:
                                  type=int,
                                  help="iter time for eval",
                                  default=50)
+        self.parser.add_argument("--dis",
+                                 help="discription mode",
+                                 action="store_true")
         # OPTIMIZATION options
         self.parser.add_argument("--batch_size",
                                  type=int,
@@ -141,6 +144,10 @@ class MonodepthOptions:
                                  type=int,
                                  help="step size of the scheduler",
                                  default=15)
+        self.parser.add_argument("--local_rank",
+                                 type=int,
+                                 help="local rank",
+                                 default=0)
 
         # ABLATION options
         self.parser.add_argument("--v1_multiscale",
