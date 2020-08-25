@@ -14,6 +14,8 @@ import datasets
 import networks
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
+from tqdm import tqdm
+import pdb
 
 cv2.setNumThreads(0)  # This speeds up evaluation 5x on our unix systems (OpenCV 3.3.1)
 
@@ -119,8 +121,10 @@ def evaluate(opt):
         depth_decoder = networks.DepthDecoder(encoder.num_ch_enc,refine=refine)
 
         model_dict = encoder.state_dict()
-        encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
-        depth_decoder.load_state_dict(torch.load(decoder_path))
+        
+        encoder.load_state_dict({k.replace('module.',''): v for k, v in encoder_dict.items() if k.replace('module.','') in model_dict})
+        depth_decoder_dict = torch.load(decoder_path)
+        depth_decoder.load_state_dict({k.replace('module.',''): v for k, v in depth_decoder_dict.items()})
 
         encoder.cuda()
         encoder.eval()
@@ -169,7 +173,7 @@ def evaluate(opt):
             output_part_gt = []
             error_saved = []
         with torch.no_grad():
-            for data in dataloader:
+            for data in tqdm(dataloader):
                 batch_index += 1
                 gt.append(data["depth_gt"].cpu()[:,0].numpy())
                 input_color = data[("color", 0, 0)].cuda()

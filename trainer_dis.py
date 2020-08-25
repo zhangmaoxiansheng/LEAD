@@ -183,7 +183,7 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.run_epoch()
-            if self.epoch > 10 and (self.epoch + 1) % self.opt.save_frequency == 0:
+            if self.epoch > 0 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
                 self.save_model()
 
     def run_epoch(self):
@@ -334,8 +334,7 @@ class Trainer:
         """Save options to disk so we know what we ran this experiment with
         """
         models_dir = os.path.join(self.log_path, "models")
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir)
+        os.makedirs(models_dir,exist_ok=True)
         to_save = self.opt.__dict__.copy()
 
         with open(os.path.join(models_dir, 'opt.json'), 'w') as f:
@@ -345,8 +344,7 @@ class Trainer:
         """Save model weights to disk
         """
         save_folder = os.path.join(self.log_path, "models", "weights_{}".format(self.epoch))
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
+        os.makedirs(save_folder,exist_ok=True)
 
         for model_name, model in self.models.items():
             save_path = os.path.join(save_folder, "{}.pth".format(model_name))
