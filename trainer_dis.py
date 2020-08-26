@@ -222,16 +222,17 @@ class Trainer:
             # log less frequently after the first 2000 steps to save time & disk space
             early_phase = batch_idx % self.opt.log_frequency == 0 and self.step < 2000
             late_phase = self.step % 2000 == 0
-            
-            if (self.opt.gan or self.opt.gan2) and batch_idx % self.opt.log_frequency == 0 :
+
+            if (self.opt.gan or self.opt.gan2):
                 if outputs["D_update"]:
-                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | D_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data),losses["loss/D_total"].cpu().data)
-                if outputs["G_update"]:
-                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | G_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data),losses["loss/G_total"].cpu().data)
+                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | D_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data,losses["loss/D_total"].cpu().data))
+                elif outputs["G_update"]:
+                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | G_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data,losses["loss/G_total"].cpu().data))
+                else:
+                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
             else:
                 tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
             if early_phase or late_phase:
-
                 if "depth_gt" in inputs:
                     self.compute_depth_losses(inputs, outputs, losses)
 
