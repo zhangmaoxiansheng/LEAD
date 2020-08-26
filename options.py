@@ -148,6 +148,12 @@ class MonodepthOptions:
                                  type=int,
                                  help="local rank",
                                  default=0)
+        self.parser.add_argument("--start_gan",
+                                 type=int,
+                                 default=4)
+        self.parser.add_argument("--stop_gan",
+                                 type=int,
+                                 default=30)
 
         # ABLATION options
         self.parser.add_argument("--v1_multiscale",

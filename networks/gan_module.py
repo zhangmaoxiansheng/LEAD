@@ -73,6 +73,8 @@ class pix2pix_loss(nn.Module):
             self.stage_weight = [0.1,0.1,0.1,0.3,0.5]
         self.crop_mode = mode
         self.D_update = 0
+        self.start_gan = opt.start_gan
+        self.stop_gan = opt.stop_gan
 
     @staticmethod
     def set_requires_grad(net, requires_grad=False):
@@ -174,8 +176,6 @@ class pix2pix_loss(nn.Module):
     def forward(self,inputs,outputs,losses,epoch):
         #D:
         self.epoch = epoch
-        self.start_gan = 20#4
-        self.stop_gan = 30
         outputs["D_update"] = False
         outputs["G_update"] = False
         #if epoch < 30:

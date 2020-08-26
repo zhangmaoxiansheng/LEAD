@@ -23,10 +23,13 @@ import copy
 from model_wrapper import model_wrapper
 from tqdm import tqdm
 from torch.utils.data.distributed import DistributedSampler
+import pdb
 #from apex import amp
 torch.distributed.init_process_group(backend="nccl",init_method='env://')
 #from IPython import embed
-
+def set_requeires_grad(model,grad=False):
+    for param in model.parameters():
+        param.requeires_grad=grad
 class Trainer:
     def __init__(self, options):
         self.opt = options
@@ -40,75 +43,81 @@ class Trainer:
 
         self.models = {}
         self.parameters_to_train = []
-        self.parameters_to_train_refine = []
-
-        #self.device = torch.device("cpu" if self.opt.no_cuda else "cuda")
 
         local_rank = torch.distributed.get_rank()
         torch.cuda.set_device(local_rank)
         self.device = torch.device("cuda", local_rank)
 
         self.use_pose_net = not (self.opt.use_stereo and self.opt.frame_ids == [0])
+        if self.opt.refine:
+            if self.crop_mode == 'b' or self.crop_mode == 'cl':
+                self.crop_h = [128,168,192,192,192]
+                self.crop_w = [192,256,384,448,640]
+            else:
+                self.crop_h = [96,128,160,192,192]
+                self.crop_w = [192,256,384,448,640]
+        else:
+            self.crop_h = None
+            self.crop_w = None
 
         if self.refine:
-            # self.refine_stage = list(range(options.refine_stage))
-            # if len(self.refine_stage) > 4:
-            #     self.crop_h = [96,128,160,192,192]
-            #     self.crop_w = [192,256,384,448,640]
-            # else:
-            #     self.crop_h = [96,128,160,192]
-            #     self.crop_w = [192,256,384,640]
-            if self.opt.refine_model == 's':
-                self.models["mid_refine"] = networks.Simple_Propagate(self.crop_h,self.crop_w,self.crop_mode)
-            elif self.opt.refine_model == 'i':
-                self.models["mid_refine"] = networks.Iterative_Propagate_old(self.crop_h,self.crop_w,self.crop_mode)
-            for param in self.models["mid_refine"].parameters():
-                param.requeires_grad = False
+            self.models["mid_refine"] = networks.Iterative_Propagate(self.crop_h,self.crop_w,self.crop_mode,False)
+
             self.models["mid_refine"].to(self.device)
+            self.parameters_to_train += list(self.models["mid_refine"].parameters())
+            if self.opt.gan:
+                self.models["netD"] = networks.Discriminator()
+                self.models["netD"].to(self.device)
+                self.parameters_D = list(self.models["netD"].parameters())
+            if self.opt.gan2:
+                self.models["netD"] = networks.Discriminator_group()
+                self.models["netD"].to(self.device)
+                self.parameters_D = list(self.models["netD"].parameters())
         self.models["encoder"] = networks.ResnetEncoder(
             self.opt.num_layers, self.opt.weights_init == "pretrained", num_input_images=1)
         self.models["encoder"].to(self.device)
-        self.parameters_to_train += list(self.models["encoder"].parameters())
 
         self.models["depth"] = networks.DepthDecoder(
             self.models["encoder"].num_ch_enc, self.opt.scales,refine=self.refine)
         self.models["depth"].to(self.device)
-        self.parameters_to_train += list(self.models["depth"].parameters())
 
         if self.use_pose_net:
-            if self.opt.pose_model_type == "separate_resnet":
-                self.models["pose_encoder"] = networks.ResnetEncoder(
-                    self.opt.num_layers,
-                    self.opt.weights_init == "pretrained",
-                    num_input_images=self.num_pose_frames)
+            self.models["pose_encoder"] = networks.ResnetEncoder(
+                self.opt.num_layers,
+                self.opt.weights_init == "pretrained",
+                num_input_images=self.num_pose_frames)
 
-                self.models["pose_encoder"].to(self.device)
-                self.parameters_to_train += list(self.models["pose_encoder"].parameters())
-
-                self.models["pose"] = networks.PoseDecoder(
-                    self.models["pose_encoder"].num_ch_enc,
-                    num_input_features=1,
-                    num_frames_to_predict_for=2)
-
+            self.models["pose_encoder"].to(self.device)
+            self.models["pose"] = networks.PoseDecoder(
+                self.models["pose_encoder"].num_ch_enc,
+                num_input_features=1,
+                num_frames_to_predict_for=2)
             self.models["pose"].to(self.device)
+            
+        if self.refine:
+            set_requeires_grad(self.models["depth"])
+            set_requeires_grad(self.models["encoder"])
+            set_requeires_grad(self.models["pose_encoder"])
+            set_requeires_grad(self.models["pose"])
+        else:
+            self.parameters_to_train += list(self.models["encoder"].parameters())
+            self.parameters_to_train += list(self.models["depth"].parameters())
+            self.parameters_to_train += list(self.models["pose_encoder"].parameters())
             self.parameters_to_train += list(self.models["pose"].parameters())
-        
+
         parameters_to_train = self.parameters_to_train
         self.model_optimizer = optim.Adam(parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
             self.model_optimizer, self.opt.scheduler_step_size, 0.1)
-
+        if self.opt.gan or self.opt.gan2:
+            self.D_optimizer = optim.Adam(self.parameters_D, 1e-4)
+            self.model_lr_scheduler_D = optim.lr_scheduler.StepLR(self.D_optimizer, self.opt.scheduler_step_size, 0.1)
+            if self.opt.gan:
+                self.pix2pix = networks.pix2pix_loss_iter(self.model_optimizer, self.D_optimizer, self.models["netD"], self.opt, self.crop_h, self.crop_w, mode=self.crop_mode,)
+            else:
+                self.pix2pix = networks.pix2pix_loss_iter2(self.model_optimizer, self.D_optimizer, self.models["netD"], self.opt, self.crop_h, self.crop_w, mode=self.crop_mode,)
         if self.opt.load_weights_folder is not None:
             self.load_model()
-        if self.refine:
-            self.models["encoder_nograd"] = copy.deepcopy(self.models["encoder"])
-            for param in self.models["encoder_nograd"].parameters():
-                param.requeires_grad=False
-            self.models["encoder_nograd"].to(self.device)
-            self.models["depth_nograd"] = copy.deepcopy(self.models["depth"])
-            for param in self.models["depth_nograd"].parameters():
-                param.requeires_grad=False
-            self.models["depth_nograd"].to(self.device)
 
         print("Training model named:\n  ", self.opt.model_name)
         print("Models and tensorboard events files are saved to:\n  ", self.opt.log_dir)
@@ -130,13 +139,13 @@ class Trainer:
 
         train_dataset = self.dataset(
             self.opt.data_path, train_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=True, img_ext=img_ext, refine=False, crop_mode=self.crop_mode)
+            self.opt.frame_ids, 4, is_train=True, img_ext=img_ext, refine=self.opt.refine, crop_mode=self.crop_mode,crop_h=self.crop_h, crop_w=self.crop_w)
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size,
             num_workers=self.opt.num_workers, pin_memory=True, drop_last=True,sampler=DistributedSampler(train_dataset))
         val_dataset = self.dataset(
             self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=False, img_ext=img_ext, refine=False, crop_mode=self.crop_mode)
+            self.opt.frame_ids, 4, is_train=False, img_ext=img_ext, refine=self.opt.refine, crop_mode=self.crop_mode,crop_h=self.crop_h, crop_w=self.crop_w)
         self.val_loader = DataLoader(
             val_dataset, self.opt.batch_size,
             num_workers=self.opt.num_workers, pin_memory=True, drop_last=True,sampler=DistributedSampler(val_dataset))
@@ -183,14 +192,12 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.run_epoch()
-            if self.epoch > 0 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
+            if self.epoch > 10 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
                 self.save_model()
 
     def run_epoch(self):
         """Run a single epoch of training and validation
         """
-
-        print("Training")
         self.set_train()
         tbar = tqdm(self.train_loader)
 
@@ -198,14 +205,17 @@ class Trainer:
 
             before_op_time = time.time()
 
-            outputs, losses = self.model_wrapper.forward(inputs)
+            outputs, losses = self.model_wrapper.forward(inputs,self.epoch)
 
-            self.model_optimizer.zero_grad()
-            # with amp.scale_loss(losses["loss"],self.model_optimizer) as scaled_loss:
-            #     scaled_loss.backward()
-            #losses["loss"] = losses["loss"].mean()
-            losses["loss"].backward()
-            self.model_optimizer.step()
+            if self.opt.gan or self.opt.gan2:
+                self.pix2pix(inputs, outputs, losses, self.epoch)
+            else:
+                self.model_optimizer.zero_grad()
+                # with amp.scale_loss(losses["loss"],self.model_optimizer) as scaled_loss:
+                #     scaled_loss.backward()
+                #losses["loss"] = losses["loss"].mean()
+                losses["loss"].backward()
+                self.model_optimizer.step()
 
             duration = time.time() - before_op_time
 
@@ -213,15 +223,20 @@ class Trainer:
             early_phase = batch_idx % self.opt.log_frequency == 0 and self.step < 2000
             late_phase = self.step % 2000 == 0
             
-            tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
-
+            if (self.opt.gan or self.opt.gan2) and batch_idx % self.opt.log_frequency == 0 :
+                if outputs["D_update"]:
+                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | D_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data),losses["loss/D_total"].cpu().data)
+                if outputs["G_update"]:
+                    tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f} | G_loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data),losses["loss/G_total"].cpu().data)
+            else:
+                tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
             if early_phase or late_phase:
 
                 if "depth_gt" in inputs:
                     self.compute_depth_losses(inputs, outputs, losses)
 
                 self.log("train", inputs, outputs, losses)
-                self.val()
+                #self.val()
 
             self.step += 1
         self.model_lr_scheduler.step()
@@ -369,13 +384,19 @@ class Trainer:
         print("loading model from folder {}".format(self.opt.load_weights_folder))
 
         for n in self.opt.models_to_load:
-            print("Loading {} weights...".format(n))
+            
             path = os.path.join(self.opt.load_weights_folder, "{}.pth".format(n))
-            model_dict = self.models[n].state_dict()
-            pretrained_dict = torch.load(path)
-            pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-            model_dict.update(pretrained_dict)
-            self.models[n].load_state_dict(model_dict)
+            if os.path.exists(path):
+                print("Loading {} weights...".format(n))
+                model_dict = self.models[n].state_dict()
+                pretrained_dict = torch.load(path)
+                if 'epoch' in pretrained_dict.keys():
+                    self.epoch = pretrained_dict['epoch']
+                else:
+                    self.epoch = 0
+                pretrained_dict = {k.replace('module.',''): v for k, v in pretrained_dict.items() if k.replace('module.','') in model_dict}
+                model_dict.update(pretrained_dict)
+                self.models[n].load_state_dict(model_dict)
 
         # loading adam state
         # optimizer_load_path = os.path.join(self.opt.load_weights_folder, "adam.pth")
@@ -385,3 +406,22 @@ class Trainer:
         #     self.model_optimizer.load_state_dict(optimizer_dict)
         # else:
         #     print("Cannot find Adam weights so Adam is randomly initialized")
+    
+    def crop(self,image,h=160,w=320):
+        origin_h = image.size(2)
+        origin_w = image.size(3)
+        
+        if self.crop_mode=='b':
+            origin_h = image.size(2)
+            origin_w = image.size(3)
+            h_start = max(int(round(origin_h-h)),0)
+            w_start = max(int(round((origin_w-w)/2)),0)
+            w_end = min(w_start + w,origin_w)
+            output = image[:,:,h_start:,w_start:w_end] 
+        else:
+            h_start = max(int(round((origin_h-h)/2)),0)
+            h_end = min(h_start + h,origin_h)
+            w_start = max(int(round((origin_w-w)/2)),0)
+            w_end = min(w_start + w,origin_w)
+            output = image[:,:,h_start:h_end,w_start:w_end] 
+        return output

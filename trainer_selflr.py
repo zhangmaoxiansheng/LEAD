@@ -315,8 +315,7 @@ class Trainer:
                 outputs.update(self.predict_poses(inputs, features))
         self.generate_images_pred(inputs, outputs)
         losses = self.compute_losses(inputs, outputs)
-        if self.refine:
-            losses["loss/scale"] = outputs["scale"]
+        
 
         return outputs, losses
 
@@ -476,7 +475,6 @@ class Trainer:
             mask = disp_part_gt > 0
             depth_loss = torch.abs(disp_pred[mask] - disp_part_gt[mask]).mean()
             losses["loss/depth_{}".format(scale)] = depth_loss
-            depth_loss = depth_loss
             if self.refine:   
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
