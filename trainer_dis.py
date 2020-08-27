@@ -21,6 +21,7 @@ import networks
 import scipy.io as scio 
 import copy
 from model_wrapper import model_wrapper
+from model_joint_wrapper import model_joint_wrapper
 from tqdm import tqdm
 from torch.utils.data.distributed import DistributedSampler
 import pdb
@@ -94,11 +95,16 @@ class Trainer:
                 num_frames_to_predict_for=2)
             self.models["pose"].to(self.device)
             
-        if self.refine:
+        if self.refine and not self.opt.join:
             set_requeires_grad(self.models["depth"])
             set_requeires_grad(self.models["encoder"])
             set_requeires_grad(self.models["pose_encoder"])
             set_requeires_grad(self.models["pose"])
+        elif self.opt.join:
+            set_requeires_grad(self.models["pose_encoder"])
+            set_requeires_grad(self.models["pose"])
+            self.parameters_to_train += list(self.models["encoder"].parameters())
+            self.parameters_to_train += list(self.models["depth"].parameters())
         else:
             self.parameters_to_train += list(self.models["encoder"].parameters())
             self.parameters_to_train += list(self.models["depth"].parameters())
@@ -163,7 +169,10 @@ class Trainer:
             len(train_dataset), len(val_dataset)))
 
         self.save_opts()
-        self.model_wrapper = model_wrapper(self.models,self.opt,self.device)
+        if self.opt.join:
+            self.model_wrapper = model_joint_wrapper(self.models,self.opt,self.device)
+        else:
+            self.model_wrapper = model_wrapper(self.models,self.opt,self.device)
         self.model_wrapper.to(self.device)
         #amp.initialize(list(self.models.values()),self.model_optimizer,opt_level="O1")
         if torch.cuda.device_count() > 1:

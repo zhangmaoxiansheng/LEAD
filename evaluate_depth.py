@@ -70,6 +70,11 @@ def batch_post_process_disparity(l_disp, r_disp):
     r_mask = l_mask[:, :, ::-1]
     return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
 
+def load_model_dict(model_path,model):
+    pretrained_model_dict = torch.load(model_path)
+    model_dict = model.state_dict()
+    model.load_state_dict({k.replace('module.',''): v for k, v in pretrained_model_dict.items() if k.replace('module.','') in model_dict})
+
 
 def evaluate(opt):
     """Evaluates a pretrained model using a specified test set
@@ -132,33 +137,10 @@ def evaluate(opt):
         depth_decoder.eval()
         if refine and not opt.dropout:
             renet_path = os.path.join(opt.load_weights_folder, "mid_refine.pth")
-            if opt.refine_model == 'i':
-                mid_refine = networks.Iterative_Propagate(crop_h,crop_w,opt.crop_mode)
-            elif opt.refine_model == 'io':
-                mid_refine = networks.Iterative_Propagate_old(crop_h,crop_w,opt.crop_mode)
-            else:
-                mid_refine = networks.Simple_Propagate(crop_h,crop_w,opt.crop_mode)
-            mid_refine.load_state_dict(torch.load(renet_path))
+            mid_refine = networks.Iterative_Propagate(crop_h,crop_w,opt.crop_mode)
+            load_model_dict(renet_path,mid_refine)
             mid_refine.cuda()
             mid_refine.eval()
-        if opt.dropout:
-            depth_ref_path = os.path.join(opt.load_weights_folder, "depth_ref.pth")
-            renet_path = os.path.join(opt.load_weights_folder, "mid_refine.pth")
-            
-            if opt.refine_model == 'i':
-                mid_refine = networks.Iterative_Propagate(crop_h,crop_w,opt.crop_mode)
-            elif opt.refine_model == 'io':
-                mid_refine = networks.Iterative_Propagate_old(crop_h,crop_w,opt.crop_mode)
-            else:
-                mid_refine = networks.Simple_Propagate(crop_h,crop_w,opt.crop_mode)
-            depth_ref = networks.DepthDecoder(encoder.num_ch_enc,refine=refine)
-            
-            mid_refine.load_state_dict(torch.load(renet_path))
-            mid_refine.cuda()
-            mid_refine.eval()
-            depth_ref.load_state_dict(torch.load(depth_ref_path))
-            depth_ref.cuda()
-            depth_ref.eval()
 
         pred_disps = []
         gt = []
@@ -237,18 +219,11 @@ def evaluate(opt):
                     
                 pred_disp, _ = disp_to_depth(output_disp, opt.min_depth, opt.max_depth)
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
-
-                if opt.post_process:
-                    N = pred_disp.shape[0] // 2
-                    pred_disp = batch_post_process_disparity(pred_disp[:N], pred_disp[N:, :, ::-1])
-
                 pred_disps.append(pred_disp)
         pred_disps = np.concatenate(pred_disps,axis=0)
         gt = np.concatenate(gt,axis=0)
         if opt.save_pred_disps:
             output_part_gt = np.concatenate(output_part_gt,axis=0)
-            # for i in opt.refine_stage:
-            #     output_save[i] = np.concatenate(output_save[i],axis=0)
     else:
         # Load predictions from file
         print("-> Loading predictions from {}".format(opt.ext_disp_to_eval))
@@ -261,11 +236,6 @@ def evaluate(opt):
             pred_disps = pred_disps[eigen_to_benchmark_ids]
 
     if opt.save_pred_disps:
-
-        # output_path = os.path.join(
-        #     opt.load_weights_folder, "disps_{}_split.npy".format(opt.eval_split))
-        # print("-> Saving predicted disparities to ", output_path)
-        # np.save(output_path, pred_disps)
         save_base_path = os.path.join(opt.load_weights_folder,'./result')
         if not os.path.exists(save_base_path):
             os.mkdir(save_base_path)

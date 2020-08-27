@@ -127,6 +127,9 @@ class MonodepthOptions:
         self.parser.add_argument("--dis",
                                  help="discription mode",
                                  action="store_true")
+        self.parser.add_argument("--join",
+                                 help="join train",
+                                 action="store_true")
         # OPTIMIZATION options
         self.parser.add_argument("--batch_size",
                                  type=int,

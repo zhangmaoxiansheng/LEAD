@@ -21,7 +21,7 @@ import scipy.io as scio
 import copy
 import pdb
 
-class model_wrapper(nn.Module):
+class model_joint_wrapper(nn.Module):
     def __init__(self,models,opt,device):
         super().__init__()
         self.models = models
@@ -53,20 +53,24 @@ class model_wrapper(nn.Module):
         self.project_3d = {}
         if self.opt.refine:
             self.refine_stage = list(range(opt.refine_stage))
-            scales = self.refine_stage
-        else:
-            scales = self.opt.scales
-        for scale in scales:
-            if self.opt.refine:
-                h = self.crop_h[scale]
-                w = self.crop_w[scale]
-            else:
-                h = self.opt.height // (2 ** scale)
-                w = self.opt.width // (2 ** scale)
+            self.backproject_depth_r = {}
+            self.project_3d_r = {}
+
+        for scale in self.opt.scales:
+            h = self.opt.height // (2 ** scale)
+            w = self.opt.width // (2 ** scale)
             self.backproject_depth[scale] = BackprojectDepth(self.opt.batch_size, h, w)
             self.backproject_depth[scale].to(self.device)
             self.project_3d[scale] = Project3D(self.opt.batch_size, h, w)
             self.project_3d[scale].to(self.device)
+        for scale in self.refine_stage:
+            h = self.crop_h[scale]
+            w = self.crop_w[scale]
+            self.backproject_depth_r[scale] = BackprojectDepth(self.opt.batch_size, h, w)
+            self.backproject_depth_r[scale].to(self.device)
+            self.project_3d_r[scale] = Project3D(self.opt.batch_size, h, w)
+            self.project_3d_r[scale].to(self.device)
+
     
     def predict_poses(self, inputs):
         """Predict poses between input frames for monocular sequences.
@@ -108,15 +112,15 @@ class model_wrapper(nn.Module):
                         axisangle[:, i], translation[:, i], invert=(f_i < 0))
         return outputs
     
-    def generate_images_pred(self, inputs, outputs):
+    def generate_images_pred(self, inputs, outputs,refine=False):
         """Generate the warped (reprojected) color images for a minibatch.
         Generated images are saved into the `outputs` dictionary.
         """
-        scales = self.refine_stage if self.opt.refine else self.opt.scales
+        scales = self.refine_stage if refine else self.opt.scales
         for scale in scales:
             disp = outputs[("disp", scale)]
 
-            if not self.opt.refine:
+            if not refine:
                 disp = F.interpolate(
                     disp, [self.opt.height, self.opt.width], mode="bilinear", align_corners=False)
                 source_scale = 0
@@ -125,24 +129,30 @@ class model_wrapper(nn.Module):
             outputs[("depth", 0, scale)] = depth
 
             for i, frame_id in enumerate(self.opt.frame_ids[1:]):
-                wrap_scale = scale if self.opt.refine else source_scale
+                wrap_scale = scale if refine else source_scale
+                inv_k_key = "inv_K_r" if refine else "inv_K"
+                k_key = "K_r" if refine else "K"
+                backprojecter = self.backproject_depth_r if refine else self.backproject_depth
+                project_3d = self.project_3d_r if refine else self.project_3d
+                #color_key = "color_r" if refine else "color"
+                color_key = "color"
                 T = outputs[("cam_T_cam", 0, frame_id)]
                 
-                cam_points = self.backproject_depth[wrap_scale](
-                    depth, inputs[("inv_K_r", wrap_scale)])
-                pix_coords = self.project_3d[wrap_scale](
-                    cam_points, inputs[("K_r", wrap_scale)], T)
+                cam_points = backprojecter[wrap_scale](
+                    depth, inputs[(inv_k_key, wrap_scale)])
+                pix_coords = project_3d[wrap_scale](
+                    cam_points, inputs[(k_key, wrap_scale)], T)
 
                 outputs[("sample", frame_id, scale)] = pix_coords
-                outputs[("color", frame_id, scale)] = F.grid_sample(
-                    inputs[("color", frame_id, wrap_scale)],
+                outputs[(color_key, frame_id, scale)] = F.grid_sample(
+                    inputs[(color_key, frame_id, wrap_scale)],
                     outputs[("sample", frame_id, scale)],
                     padding_mode="border")
 
                 if not self.opt.disable_automasking:
-                    scale_id = scale if self.opt.refine else source_scale
+                    scale_id = scale if refine else source_scale
                     outputs[("color_identity", frame_id, scale_id)] = \
-                        inputs[("color", frame_id, scale_id)]
+                        inputs[(color_key, frame_id, scale_id)]
         
     def compute_reprojection_loss(self, pred, target):
         """Computes reprojection loss between a batch of predicted and target images
@@ -158,23 +168,24 @@ class model_wrapper(nn.Module):
 
         return reprojection_loss
     
-    def compute_losses(self, inputs, outputs):
+    def compute_losses(self, inputs, outputs, refine=False):
         """Compute the reprojection and smoothness losses for a minibatch
         """
-        losses = {}
         total_loss = 0
-        scales =  self.refine_stage.copy() if self.opt.refine else self.opt.scales.copy()
-        
+        scales =  self.refine_stage.copy() if refine else self.opt.scales.copy()
+        color_key = "color"
+        disp_key = "disp"
+        depth_key = "depth"
         for scale in scales:
             loss = 0
             depth_loss = 0
             reprojection_losses = []
 
             source_scale = 0
-            color = inputs[("color", 0, scale)]
+            color = inputs[(color_key, 0, scale)]
             
-            disp = outputs[("disp", scale)]
-            if self.opt.refine:
+            disp = outputs[(disp_key, scale)]
+            if refine:
                 h = self.crop_h[scale]
                 w = self.crop_w[scale]
                 warning = torch.sum(torch.isnan(disp))
@@ -182,34 +193,32 @@ class model_wrapper(nn.Module):
                     print("nan in disp")
                 disp_pred = disp
                 disp_target = self.crop(outputs["blur_disp"],h,w)
-                target = inputs[("color", 0, scale)]
-                depth_pred = outputs[("depth",0,scale)]
+                target = inputs[(color_key, 0, scale)]
+                depth_pred = outputs[(depth_key,0,scale)]
                 disp_part_gt = self.crop(outputs["disp_gt_part"],h,w)
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
-                depth_loss += depth_ssim_loss * 0.5 + depth_l1_loss * 0.5
-                losses["loss/depth_ssim{}".format(scale)] = depth_ssim_loss
+                depth_loss += depth_ssim_loss * 0.3 + depth_l1_loss * 0.7
             else:
-                target = inputs[("color", 0, source_scale)]
+                target = inputs[(color_key, 0, source_scale)]
                 disp_pred = F.interpolate(
                     disp, [self.opt.height, self.opt.width], mode="bilinear", align_corners=False)
                 disp_part_gt = depth_to_disp(inputs["depth_gt_part"],self.opt.min_depth,self.opt.max_depth)
             
             mask = disp_part_gt>0
             depth_loss += torch.abs(disp_pred[mask] - disp_part_gt[mask]).mean()
-            losses["loss/depth_{}".format(scale)] = depth_loss
 
             for frame_id in self.opt.frame_ids[1:]:
-                pred = outputs[("color", frame_id, scale)]
+                pred = outputs[(color_key, frame_id, scale)]
                 reprojection_losses.append(self.compute_reprojection_loss(pred, target))
 
             reprojection_losses = torch.cat(reprojection_losses, 1)
 
             if not self.opt.disable_automasking:
                 identity_reprojection_losses = []
-                scale_id = scale if self.opt.refine else source_scale
+                scale_id = scale if refine else source_scale
                 for frame_id in self.opt.frame_ids[1:]:
-                    pred = inputs[("color", frame_id, scale_id)]
+                    pred = inputs[(color_key, frame_id, scale_id)]
                     identity_reprojection_losses.append(
                         self.compute_reprojection_loss(pred, target))
 
@@ -237,7 +246,6 @@ class model_wrapper(nn.Module):
                 outputs["identity_selection/{}".format(scale)] = (
                     idxs > identity_reprojection_loss.shape[1] - 1).float()
             loss += to_optimise.mean()
-            #losses["optloss/{}".format(scale)] = to_optimise.mean()
             mean_disp = disp.mean(2, True).mean(3, True)
             norm_disp = disp / (mean_disp + 1e-7)
             grad_disp_x, grad_disp_y, grad_disp_x2, grad_disp_y2 = get_smooth_loss(norm_disp, color)
@@ -245,12 +253,10 @@ class model_wrapper(nn.Module):
             
             loss += self.opt.disparity_smoothness * smooth_loss / (2 ** scale)
             loss += depth_loss
-            total_loss += loss * self.stage_weight[scale] if self.opt.refine else loss
-            losses["loss/{}".format(scale)] = loss
+            total_loss += loss * self.stage_weight[scale] if refine else loss
 
         total_loss /= len(scales)
-        losses["loss"] = total_loss
-        return losses
+        return total_loss
 
     def crop(self,image,h=160,w=320):
         origin_h = image.size(2)
@@ -274,36 +280,35 @@ class model_wrapper(nn.Module):
     def forward(self,inputs,epoch):
         for key, ipt in inputs.items():
             inputs[key] = ipt.to(self.device)
-
+        total_loss = 0
         inputs["depth_gt_part"] =  F.interpolate(
                     inputs["depth_gt_part"], [self.opt.height, self.opt.width], mode="nearest")
-        if self.opt.refine:
-            with torch.no_grad():
-                features = self.models["encoder"](torch.cat((inputs["color_aug", 0, 0],inputs["depth_gt_part"]),1))
-                outputs = self.models["depth"](features)
-            disp_blur = outputs[("disp",0)]
-            disp_part_gt = depth_to_disp(inputs["depth_gt_part"] ,self.opt.min_depth,self.opt.max_depth)
-            #pdb.set_trace()
-            with torch.no_grad():
-                outputs.update(self.models["depth"](features,self.opt.dropout))
-            if (self.opt.gan or self.opt.gan2) and epoch % 2 != 0 and epoch > self.opt.start_gan and epoch < self.opt.stop_gan:
-                with torch.no_grad():
-                    outputs.update(self.models["mid_refine"](outputs["disp_feature"], disp_blur, disp_part_gt, inputs[("color_aug", 0, 0)],self.refine_stage))
-            else:
-                outputs.update(self.models["mid_refine"](outputs["disp_feature"], disp_blur, disp_part_gt, inputs[("color_aug", 0, 0)],self.refine_stage))
-            outputs["disp_gt_part"] = disp_part_gt#after the forwar,the disp gt has been filtered
-            _,outputs["dense_gt"] = disp_to_depth(outputs["dense_gt"],self.opt.min_depth,self.opt.max_depth)
-            for i in self.opt.frame_ids:
-                origin_color = inputs[("color",i,0)].clone()
-                for s in self.refine_stage:
-                    inputs[("color",i,s)] = self.crop(origin_color,self.crop_h[s],self.crop_w[s])
-        else:
-            features = self.models["encoder"](torch.cat((inputs["color_aug", 0, 0],inputs["depth_gt_part"]),1))
-            outputs = self.models["depth"](features)
         
-        if not (self.opt.use_stereo and self.opt.frame_ids == [0]):
-            outputs.update(self.predict_poses(inputs))
+        features = self.models["encoder"](torch.cat((inputs["color_aug", 0, 0],inputs["depth_gt_part"]),1))
+        outputs = self.models["depth"](features)
+        outputs.update(self.predict_poses(inputs))
         self.generate_images_pred(inputs, outputs)
-        losses = self.compute_losses(inputs, outputs)
-
+        total_loss += self.compute_losses(inputs, outputs)
+        
+        disp_blur = outputs[("disp",0)]
+        disp_part_gt = depth_to_disp(inputs["depth_gt_part"] ,self.opt.min_depth,self.opt.max_depth)
+        outputs.update(self.models["depth"](features,self.opt.dropout))
+        
+        if (self.opt.gan or self.opt.gan2) and epoch % 2 != 0 and epoch > self.opt.start_gan and epoch < self.opt.stop_gan:
+            with torch.no_grad():
+                outputs.update(self.models["mid_refine"](outputs["disp_feature"], disp_blur, disp_part_gt, inputs[("color_aug", 0, 0)],self.refine_stage))
+        else:
+            outputs.update(self.models["mid_refine"](outputs["disp_feature"], disp_blur, disp_part_gt, inputs[("color_aug", 0, 0)],self.refine_stage))
+        outputs["disp_gt_part"] = disp_part_gt#after the forwar,the disp gt has been filtered
+        _,outputs["dense_gt"] = disp_to_depth(outputs["dense_gt"],self.opt.min_depth,self.opt.max_depth)
+        
+        for i in self.opt.frame_ids:
+            origin_color = inputs[("color",i,0)].clone()
+            for s in self.refine_stage:
+                inputs[("color",i,s)] = self.crop(origin_color,self.crop_h[s],self.crop_w[s])
+        
+        self.generate_images_pred(inputs, outputs,refine=True)
+        total_loss += self.compute_losses(inputs,outputs,refine=True)
+        losses = {}
+        losses["loss"] = total_loss
         return outputs, losses
