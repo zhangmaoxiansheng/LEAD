@@ -64,23 +64,23 @@ class Trainer:
         if self.refine:
             self.models["mid_refine"] = networks.Iterative_Propagate(self.crop_h,self.crop_w,self.crop_mode,False)
 
-            self.models["mid_refine"].to(self.device)
+            #self.models["mid_refine"].to(self.device)
             self.parameters_to_train += list(self.models["mid_refine"].parameters())
             if self.opt.gan:
                 self.models["netD"] = networks.Discriminator()
-                self.models["netD"].to(self.device)
+                #self.models["netD"].to(self.device)
                 self.parameters_D = list(self.models["netD"].parameters())
             if self.opt.gan2:
                 self.models["netD"] = networks.Discriminator_group()
-                self.models["netD"].to(self.device)
+                #self.models["netD"].to(self.device)
                 self.parameters_D = list(self.models["netD"].parameters())
         self.models["encoder"] = networks.ResnetEncoder(
             self.opt.num_layers, self.opt.weights_init == "pretrained", num_input_images=1)
-        self.models["encoder"].to(self.device)
+        #self.models["encoder"].to(self.device)
 
         self.models["depth"] = networks.DepthDecoder(
             self.models["encoder"].num_ch_enc, self.opt.scales,refine=self.refine)
-        self.models["depth"].to(self.device)
+        #self.models["depth"].to(self.device)
 
         if self.use_pose_net:
             self.models["pose_encoder"] = networks.ResnetEncoder(
@@ -88,12 +88,12 @@ class Trainer:
                 self.opt.weights_init == "pretrained",
                 num_input_images=self.num_pose_frames)
 
-            self.models["pose_encoder"].to(self.device)
+            #self.models["pose_encoder"].to(self.device)
             self.models["pose"] = networks.PoseDecoder(
                 self.models["pose_encoder"].num_ch_enc,
                 num_input_features=1,
                 num_frames_to_predict_for=2)
-            self.models["pose"].to(self.device)
+            #self.models["pose"].to(self.device)
             
         if self.refine and not self.opt.join:
             set_requeires_grad(self.models["depth"])
@@ -178,6 +178,7 @@ class Trainer:
         if torch.cuda.device_count() > 1:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
             for key in self.models.keys():
+                self.models[key].to(self.device)
                 self.models[key] = torch.nn.parallel.DistributedDataParallel(self.models[key],
                                                       device_ids=[local_rank],output_device=local_rank,broadcast_buffers=False,find_unused_parameters=True)
 
@@ -399,7 +400,7 @@ class Trainer:
             if os.path.exists(path):
                 print("Loading {} weights...".format(n))
                 model_dict = self.models[n].state_dict()
-                pretrained_dict = torch.load(path)
+                pretrained_dict = torch.load(path, map_location=torch.device("cpu"))
                 if 'epoch' in pretrained_dict.keys():
                     self.epoch = pretrained_dict['epoch']
                 else:
