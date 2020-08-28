@@ -62,25 +62,23 @@ class Trainer:
             self.crop_w = None
 
         if self.refine:
-            self.models["mid_refine"] = networks.Iterative_Propagate(self.crop_h,self.crop_w,self.crop_mode,False)
+            if self.opt.refine_model == '3D':
+                self.models["mid_refine"] = networks.Iterative_3DPropagate(self.crop_h,self.crop_w,self.crop_mode,False)
+            else:
+                self.models["mid_refine"] = networks.Iterative_Propagate(self.crop_h,self.crop_w,self.crop_mode,False)
 
-            #self.models["mid_refine"].to(self.device)
             self.parameters_to_train += list(self.models["mid_refine"].parameters())
             if self.opt.gan:
                 self.models["netD"] = networks.Discriminator()
-                #self.models["netD"].to(self.device)
                 self.parameters_D = list(self.models["netD"].parameters())
             if self.opt.gan2:
                 self.models["netD"] = networks.Discriminator_group()
-                #self.models["netD"].to(self.device)
                 self.parameters_D = list(self.models["netD"].parameters())
         self.models["encoder"] = networks.ResnetEncoder(
             self.opt.num_layers, self.opt.weights_init == "pretrained", num_input_images=1)
-        #self.models["encoder"].to(self.device)
 
         self.models["depth"] = networks.DepthDecoder(
             self.models["encoder"].num_ch_enc, self.opt.scales,refine=self.refine)
-        #self.models["depth"].to(self.device)
 
         if self.use_pose_net:
             self.models["pose_encoder"] = networks.ResnetEncoder(
@@ -88,12 +86,10 @@ class Trainer:
                 self.opt.weights_init == "pretrained",
                 num_input_images=self.num_pose_frames)
 
-            #self.models["pose_encoder"].to(self.device)
             self.models["pose"] = networks.PoseDecoder(
                 self.models["pose_encoder"].num_ch_enc,
                 num_input_features=1,
                 num_frames_to_predict_for=2)
-            #self.models["pose"].to(self.device)
             
         if self.refine and not self.opt.join:
             set_requeires_grad(self.models["depth"])
@@ -202,7 +198,7 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.run_epoch()
-            if self.epoch > 10 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
+            if self.epoch > 5 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
                 self.save_model()
 
     def run_epoch(self):

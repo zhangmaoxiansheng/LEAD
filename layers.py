@@ -150,7 +150,7 @@ class ConvBlock(nn.Module):
         return out
 
 class Conv3x3x3(nn.Module):
-    def __init__(self, in_channels, out_channles):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = nn.Conv3d(in_channels,out_channels,(3,3,3),(1,1,1),(1,1,1))
     def forward(self,x):

@@ -40,13 +40,13 @@ class Iterative_Propagate(nn.Module):
         self.model_ref3 = nn.Sequential(ConvBlock(16+1,32),
                             ConvBlock(32,32,2),
                             ConvBlock(32,64,4),
-                            ConvBlock(32,32,2),
+                            ConvBlock(64,32,2),
                             ConvBlock(32,16),
                             Conv3x3(16,1),nn.Sigmoid())
         self.model_ref4 = nn.Sequential(ConvBlock(16+1,32),
                             ConvBlock(32,32,2),
                             ConvBlock(32,64,4),
-                            ConvBlock(32,32,2),
+                            ConvBlock(64,32,2),
                             ConvBlock(32,16),
                             Conv3x3(16,1),nn.Sigmoid())
 
@@ -111,10 +111,11 @@ class Iterative_Propagate(nn.Module):
     
     
     def stage_forward(self,features,rgbd,dep_last,stage):
-        if stage > 2:
-            model = self.models[0]
-        else:
-            model = self.models[1]
+        # if stage > 2:
+        #     model = self.models[0]
+        # else:
+        #     model = self.models[1]
+        model = self.models[stage]
         #dep_enc = self.dep_enc
         h = self.crop_h[stage]
         w = self.crop_w[stage]
@@ -130,7 +131,7 @@ class Iterative_Propagate(nn.Module):
                 scale = 1
         else:
             scale = 1
-            print("warning dep[dep_last>0] is empty,stage is %d"%stage)
+            #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
@@ -203,73 +204,62 @@ class Iterative_Propagate(nn.Module):
 class Iterative_3DPropagate(Iterative_Propagate):
     def __init__(self,crop_h,crop_w,mode='c',dropout=False):
         super().__init__(crop_h,crop_w,mode='c',dropout=False)
-        self.model_ref0_3D = nn.Sequential(Conv3x3x3(4,4), Conv3x3x3(4,1))
-        self.model_ref1_3D = nn.Sequential(Conv3x3x3(4,4), Conv3x3x3(4,1))
-        self.model_ref2_3D = nn.Sequential(Conv3x3x3(4,4), Conv3x3x3(4,1))
-        self.model_ref3_3D = nn.Sequential(Conv3x3x3(4,4), Conv3x3x3(4,1))
-        self.model_ref4_3D = nn.Sequential(Conv3x3x3(4,4), Conv3x3x3(4,1))
-        
+        # self.model_ref0_3D = nn.Sequential(Conv3x3x3(4,1))
+        # self.model_ref1_3D = nn.Sequential(Conv3x3x3(4,1))
+        #self.model_ref2_3D = nn.Sequential(Conv3x3x3(4,1))
+        self.model_ref3_3D = nn.Sequential(Conv3x3x3(4,1))
+        self.model_ref4_3D = nn.Sequential(Conv3x3x3(4,1))
         
         self.model_ref0 = nn.Sequential(ConvBlock(16+1,32),
-                            ConvBlock(32,32),
-                            ConvBlock(32,64),
-                            ConvBlock(64,32),
                             ConvBlock(32,16),
                             ConvBlock(16,8),
                             Conv3x3(8,1),nn.Sigmoid())
         self.model_ref1 = nn.Sequential(ConvBlock(16+1,32),
-                            ConvBlock(32,32),
-                            ConvBlock(32,64),
-                            ConvBlock(64,32),
                             ConvBlock(32,16),
                             ConvBlock(16,8),
                             Conv3x3(8,1),nn.Sigmoid())
         self.model_ref2 = nn.Sequential(ConvBlock(16+1,32),
                             ConvBlock(32,32),
-                            ConvBlock(32,64),
-                            ConvBlock(64,32),
                             ConvBlock(32,16),
                             Conv3x3(16,1),nn.Sigmoid())
-        self.model_ref3 = nn.Sequential(ConvBlock(16+1,32),
-                            ConvBlock(32,32,2),
-                            ConvBlock(32,64,4),
+        self.model_ref3 = nn.Sequential(ConvBlock(16+1+1,32),
                             ConvBlock(32,32,2),
                             ConvBlock(32,16),
-                            Conv3x3(16,1),nn.Sigmoid())
-        self.model_ref4 = nn.Sequential(ConvBlock(16+1,32),
-                            ConvBlock(32,32,2),
-                            ConvBlock(32,64,4),
-                            ConvBlock(32,32,2),
-                            ConvBlock(32,16),
-                            Conv3x3(16,1),nn.Sigmoid())
-        self.models_3D = nn.ModuleList([self.model_ref0_3D,self.model_ref1_3D,self.model_ref2_3D,self.model_ref3_3D,self.model_ref4_3D])
+                            Conv3x3(16,1))
+        self.model_ref4 = nn.Sequential(ConvBlock(16+1+1,32),
+                            ConvBlock(32,32,4),
+                            ConvBlock(32,16,2),
+                            Conv3x3(16,1))
+        self.models_3D = nn.ModuleList([self.model_ref3_3D,self.model_ref4_3D])
         self.models = nn.ModuleList([self.model_ref0,self.model_ref1,self.model_ref2,self.model_ref3,self.model_ref4])
     def make_3D_feature(self,feature,dep):
         median_value = torch.median(dep)
-        mask_mlarge = dep > median_value
+        mask_mlarge = dep >= median_value
+        mask_mlarge = mask_mlarge.float()
         mask_msmall = dep <= median_value
+        mask_msmall = mask_msmall.float()
         #>
-        median_4_3 = torch.median(dep[mask_mlarge])
-        mask_4 = dep > median_4_3
-        mask_3 = (dep <= median_4_3) * mask_mlarge
+        median_4_3 = torch.median(dep * mask_mlarge)
+        mask_4 = (dep >= median_4_3).float()
+        mask_3 = (dep <= median_4_3).float() * mask_mlarge
         #<
-        median_4_1 = torch.median(dep[mask_msmall])
-        mask_1 = dep <= median_4_1
-        mask_2 = (dep > median_4_1) * mask_msmall
+        median_4_1 = torch.median(dep * mask_msmall)
+        mask_1 = (dep <= median_4_1).float()
+        mask_2 = (dep >= median_4_1).float() * mask_msmall
 
         mask = torch.cat((mask_1,mask_2,mask_3,mask_4),1)#B*4*H*W
         mask = mask.unsqueeze(2)#B*4*1*H*W
         
-        m_4_3 = torch.median(dep[1-mask])
         feature_3D = feature.unsqueeze(1)
         feautre_3D = feature_3D.repeat(1,4,1,1,1)#B*4*C*H*W
-        mask = mask.repeat(1,1,feature_3D.shape[1],1,1)#B*4*C*H*W
+        mask = mask.repeat(1,1,feature_3D.shape[1],1,1).cuda()#B*4*C*H*W
         feature_3D = feature_3D * mask
         return feautre_3D
 
     def stage_forward(self,features,rgbd,dep_last,stage):
         model = self.models[stage]
-        model_3D = self.models_3D[stage]
+        if stage > 2:
+            model_3D = self.models_3D[stage-3]
         #dep_enc = self.dep_enc
         h = self.crop_h[stage]
         w = self.crop_w[stage]
@@ -285,19 +275,18 @@ class Iterative_3DPropagate(Iterative_Propagate):
                 scale = 1
         else:
             scale = 1
-            print("warning dep[dep_last>0] is empty,stage is %d"%stage)
+            #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
         dep_fusion = dep_last * mask + dep * (1-mask)
         dep_fusion = dep_gt * mask_gt + dep_fusion * (1-mask_gt)
-        feature_stage = torch.cat((feature_crop,dep_fusion),1)
-        
-        feature_3D = self.make_3D_feature(feature_stage,dep_fusion)
-        feature_3D = model_3D(feature_3D)
-        feature_3D = feature_3D.squeeze()
-
-        feature_fusion = torch.cat((feature_3D,dep_fusion),1)
-
+        feature_fusion = torch.cat((feature_crop,dep_fusion),1)
+        if stage > 2:
+            feature_3D = self.make_3D_feature(feature_fusion,dep_fusion)#C+1
+            feature_3D = model_3D(feature_3D)
+            feature_3D = feature_3D.squeeze()
+            feature_fusion = torch.cat((feature_3D,dep_fusion),1)#C+2
         dep = model(feature_fusion)
-        return dep, feature_stage
+
+        return dep, feature_fusion
