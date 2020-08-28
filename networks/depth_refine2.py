@@ -123,11 +123,15 @@ class Iterative_Propagate(nn.Module):
         feature_crop = self.crop(features,h,w)
         dep_gt = self.crop(self.gt,h,w)
         dep = rgbd[:,3,:,:].unsqueeze(1)
-        # if torch.median(dep[dep_last>0]) > 0:
-        #     scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
-        # else:
-        #     scale = 1
-        #dep = dep * scale
+        if dep[dep_last>0].shape != torch.Size([0]):
+            if torch.median(dep[dep_last>0]) > 0:
+                scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+            else:
+                scale = 1
+        else:
+            scale = 1
+            print("warning dep[dep_last>0] is empty")
+        dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
         dep_fusion = dep_last * mask + dep * (1-mask)
