@@ -130,12 +130,12 @@ class Iterative_Propagate(nn.Module):
                 scale = 1
         else:
             scale = 1
-            print("warning dep[dep_last>0] is empty")
+            print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
         dep_fusion = dep_last * mask + dep * (1-mask)
-        dep_fusion = dep_gt * mask_gt + dep_gt * (1-mask_gt)
+        dep_fusion = dep_gt * mask_gt + dep_fusion * (1-mask_gt)
         feature_stage = torch.cat((feature_crop,dep_fusion),1)
         dep = model(feature_stage)
             # if torch.median(dep[dep_last>0]) > 0:
@@ -183,9 +183,9 @@ class Iterative_Propagate(nn.Module):
         #outputs["blur_disp"] = blur_depth
         #print(scale)
         all_scale = gt / blur_depth
-        
+        gt_origin = gt.clone()
         gt[all_scale>1.2] = 0
-        gt[all_scale<0.8]=0
+        gt[all_scale<0.8] = 0
         self.gt = gt
         gt_mask = gt.sign()
         blur_depth = gt_mask * gt + (1-gt_mask) * blur_depth
