@@ -124,26 +124,26 @@ class Iterative_Propagate(nn.Module):
         feature_crop = self.crop(features,h,w)
         dep_gt = self.crop(self.gt,h,w)
         dep = rgbd[:,3,:,:].unsqueeze(1)
-        if dep[dep_last>0].shape != torch.Size([0]):
-            if torch.median(dep[dep_last>0]) > 0:
-                scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
-            else:
-                scale = 1
-        else:
-            scale = 1
+        # if dep[dep_last>0].shape != torch.Size([0]):
+        #     if torch.median(dep[dep_last>0]) > 0:
+        #         scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+        #     else:
+        #         scale = 1
+        # else:
+        #     scale = 1
             #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
-        dep = dep * scale
+        #dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
         dep_fusion = dep_last * mask + dep * (1-mask)
         dep_fusion = dep_gt * mask_gt + dep_fusion * (1-mask_gt)
         feature_stage = torch.cat((feature_crop,dep_fusion),1)
         dep = model(feature_stage)
-            # if torch.median(dep[dep_last>0]) > 0:
-            #     scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
-            # else:
-            #     scale = 1
-            # dep = dep * scale
+        # if torch.median(dep[dep_last>0]) > 0:
+        #     scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+        # else:
+        #     scale = 1
+        # dep = dep * scale
         return dep, feature_stage
     
     def eval_step(self, features, blur_depth, gt_part, rgb, stage, dep_last,depth_gt):
@@ -185,8 +185,8 @@ class Iterative_Propagate(nn.Module):
         #print(scale)
         all_scale = gt / blur_depth
         gt_origin = gt.clone()
-        gt[all_scale>1.2] = 0
-        gt[all_scale<0.8] = 0
+        gt[all_scale>1.3] = 0
+        gt[all_scale<0.7] = 0
         self.gt = gt
         gt_mask = gt.sign()
         blur_depth = gt_mask * gt + (1-gt_mask) * blur_depth

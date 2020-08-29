@@ -171,12 +171,11 @@ class Trainer:
             self.model_wrapper = model_wrapper(self.models,self.opt,self.device)
         self.model_wrapper.to(self.device)
         #amp.initialize(list(self.models.values()),self.model_optimizer,opt_level="O1")
-        if torch.cuda.device_count() > 1:
-            print("Let's use", torch.cuda.device_count(), "GPUs!")
-            for key in self.models.keys():
-                self.models[key].to(self.device)
-                self.models[key] = torch.nn.parallel.DistributedDataParallel(self.models[key],
-                                                      device_ids=[local_rank],output_device=local_rank,broadcast_buffers=False,find_unused_parameters=True)
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        for key in self.models.keys():
+            self.models[key].to(self.device)
+            self.models[key] = torch.nn.parallel.DistributedDataParallel(self.models[key],
+                                                    device_ids=[local_rank],output_device=local_rank,broadcast_buffers=False,find_unused_parameters=True)
 
     def set_train(self):
         """Convert all models to training mode
