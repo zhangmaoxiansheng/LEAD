@@ -112,10 +112,10 @@ class Iterative_Propagate(nn.Module):
     
     def stage_forward(self,features,rgbd,dep_last,stage):
         if stage > 2:
-            model = self.models[0]
-        else:
             model = self.models[1]
-        model = self.models[stage]
+        else:
+            model = self.models[0]
+        #model = self.models[stage]
         #dep_enc = self.dep_enc
         h = self.crop_h[stage]
         w = self.crop_w[stage]
@@ -207,14 +207,20 @@ class Iterative_3DPropagate(Iterative_Propagate):
         # self.model_ref0_3D = nn.Sequential(Conv3x3x3(4,1))
         # self.model_ref1_3D = nn.Sequential(Conv3x3x3(4,1))
         #self.model_ref2_3D = nn.Sequential(Conv3x3x3(4,1))
-        self.model_ref3_3D = nn.Sequential(Conv3x3x3(4,1))
-        self.model_ref4_3D = nn.Sequential(Conv3x3x3(4,1))
+        self.model_ref3_3D = nn.Sequential(Conv3x3x3(4,4),Conv3x3x3(4,1))
+        self.model_ref4_3D = nn.Sequential(Conv3x3x3(4,4),Conv3x3x3(4,1))
         
         self.model_ref0 = nn.Sequential(ConvBlock(16+1,32),
+                            ConvBlock(32,32),
+                            ConvBlock(32,64),
+                            ConvBlock(64,32),
                             ConvBlock(32,16),
                             ConvBlock(16,8),
                             Conv3x3(8,1),nn.Sigmoid())
-        self.model_ref1 = nn.Sequential(ConvBlock(16+1,32),
+        self.model_ref1 = nn.Sequential(ConvBlock(4+1,32),
+                            ConvBlock(32,32),
+                            ConvBlock(32,64),
+                            ConvBlock(64,32),
                             ConvBlock(32,16),
                             ConvBlock(16,8),
                             Conv3x3(8,1),nn.Sigmoid())
@@ -234,11 +240,9 @@ class Iterative_3DPropagate(Iterative_Propagate):
         self.models = nn.ModuleList([self.model_ref0,self.model_ref1,self.model_ref2,self.model_ref3,self.model_ref4])
     def make_3D_feature(self,feature,dep):
         mask_1 = dep <=10
-        mask_2_ = dep <= 30
-        mask_3_ = dep <= 60
+        mask_2 = (dep > 10) * (dep <= 30)
+        mask_3 = (dep <= 60) * (dep > 60)
         mask_4 = dep >60
-        mask_2 = mask_2_ * (1-mask_1)
-        mask_3 = mask_3_ * (1-mask_2_)
         # median_value = torch.median(dep)
         # mask_mlarge = dep >= median_value
         # mask_mlarge_f = mask_mlarge.float()
@@ -255,18 +259,21 @@ class Iterative_3DPropagate(Iterative_Propagate):
 
         mask = torch.cat((mask_1,mask_2,mask_3,mask_4),1)#B*4*H*W
         # mask = mask.unsqueeze(2)#B*4*1*H*W
-        
         feature_3D = feature.unsqueeze(1)
-        feautre_3D = feature_3D.repeat(1,4,1,1,1)#B*4*C*H*W
-        mask = mask.repeat(1,1,feature_3D.shape[1],1,1).float().cuda()#B*4*C*H*W
+        feature_3D = feature_3D.repeat(1,4,1,1,1)#B*4*C*H*W
+        mask = mask.unsqueeze(2)
+        mask = mask.repeat(1,1,feature_3D.shape[2],1,1).float().cuda()#B*4*C*H*W
         feature_3D = feature_3D * mask
-        return feautre_3D
+        return feature_3D
 
     def stage_forward(self,features,rgbd,dep_last,stage):
-        model = self.models[stage]
         if stage > 2:
+            model = self.models[1]
+        else:
+            model = self.models[0]
+        if stage > 2:
+            pre_3d = self.models[stage]
             model_3D = self.models_3D[stage-3]
-        #dep_enc = self.dep_enc
         h = self.crop_h[stage]
         w = self.crop_w[stage]
         #dep_last is the padded depth
@@ -274,26 +281,28 @@ class Iterative_3DPropagate(Iterative_Propagate):
         feature_crop = self.crop(features,h,w)
         dep_gt = self.crop(self.gt,h,w)
         dep = rgbd[:,3,:,:].unsqueeze(1)
-        if dep[dep_last>0].shape != torch.Size([0]):
-            if torch.median(dep[dep_last>0]) > 0:
-                scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
-            else:
-                scale = 1
-        else:
-            scale = 1
+        # if dep[dep_last>0].shape != torch.Size([0]):
+        #     if torch.median(dep[dep_last>0]) > 0:
+        #         scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+        #     else:
+        #         scale = 1
+        # else:
+        #     scale = 1
             #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
-        dep = dep * scale
+        #dep = dep * scale
         mask = dep_last.sign()
         mask_gt = dep_gt.sign()
         dep_fusion = dep_last * mask + dep * (1-mask)
         dep_fusion = dep_gt * mask_gt + dep_fusion * (1-mask_gt)
         feature_fusion = torch.cat((feature_crop,dep_fusion),1)
         
-        dep = model(feature_fusion)
         if stage > 2:
-            feature_fusion = torch.cat((dep,dep_fusion),1)
-            feature_3D = self.make_3D_feature(feature_fusion,dep_fusion)#C+1
+            feature_fusion = pre_3d(feature_fusion)#channel = 4
+            feature_3D = self.make_3D_feature(feature_fusion,dep_fusion)#C=4
             feature_3D = model_3D(feature_3D)
             feature_3D = feature_3D.squeeze()
+            feature_fusion = torch.cat((feature_3D,dep_fusion),1)
+        
+        dep = model(feature_fusion)
 
         return dep, feature_fusion
