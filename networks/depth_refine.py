@@ -277,8 +277,11 @@ class Iterative_Propagate(Simple_Propagate):
         rgbd = self.crop(rgbd,h,w)
         feature_crop = self.crop(features,h,w)
         dep = rgbd[:,3,:,:].unsqueeze(1)
-        if torch.median(dep[dep_last>0]) > 0:
-            scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+        if dep[dep_last>0].shape != torch.Size([0]):
+            if torch.median(dep[dep_last>0]) > 0:
+                scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+            else:
+                scale = 1
         else:
             scale = 1
         dep = dep * scale
@@ -288,8 +291,11 @@ class Iterative_Propagate(Simple_Propagate):
             feature_stage = torch.cat((feature_crop,dep_fusion),1)
             #feature_stage = F.dropout2d(feature_stage,0.2,training=self.dropout)
             dep = model(feature_stage)
-            if torch.median(dep[dep_last>0]) > 0:
-                scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+            if dep[dep_last>0].shape != torch.Size([0]):
+                if torch.median(dep[dep_last>0]) > 0:
+                    scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
+                else:
+                    scale = 1
             else:
                 scale = 1
             dep = dep * scale

@@ -13,6 +13,8 @@ options = MonodepthOptions()
 opts = options.parse()
 if opts.dis:
     from trainer_dis import Trainer
+elif opts.filter:
+    from train_filter import Trainer
 else:
     if opts.refine and not opts.dropout:
         from trainer_cspnall import Trainer

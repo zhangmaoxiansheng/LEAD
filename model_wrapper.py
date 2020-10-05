@@ -126,12 +126,14 @@ class model_wrapper(nn.Module):
 
             for i, frame_id in enumerate(self.opt.frame_ids[1:]):
                 wrap_scale = scale if self.opt.refine else source_scale
+                k_key = 'K_r' if self.opt.refine else 'K'
+                inv_k_key = 'inv_K_r' if self.opt.refine else 'inv_K'
                 T = outputs[("cam_T_cam", 0, frame_id)]
                 
                 cam_points = self.backproject_depth[wrap_scale](
-                    depth, inputs[("inv_K_r", wrap_scale)])
+                    depth, inputs[(inv_k_key, wrap_scale)])
                 pix_coords = self.project_3d[wrap_scale](
-                    cam_points, inputs[("K_r", wrap_scale)], T)
+                    cam_points, inputs[(k_key, wrap_scale)], T)
 
                 outputs[("sample", frame_id, scale)] = pix_coords
                 outputs[("color", frame_id, scale)] = F.grid_sample(
@@ -187,7 +189,7 @@ class model_wrapper(nn.Module):
                 disp_part_gt = self.crop(outputs["disp_gt_part"],h,w)
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
-                depth_loss += depth_ssim_loss * 0.5 + depth_l1_loss * 0.5
+                depth_loss += depth_ssim_loss * 0.15 + depth_l1_loss * 0.85 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
                 losses["loss/depth_ssim{}".format(scale)] = depth_ssim_loss
             else:
                 target = inputs[("color", 0, source_scale)]

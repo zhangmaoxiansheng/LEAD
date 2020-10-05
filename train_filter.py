@@ -93,33 +93,6 @@ class Trainer:
                 num_input_features=1,
                 num_frames_to_predict_for=2)
             
-        if self.refine and not self.opt.join:
-            set_requeires_grad(self.models["depth"])
-            set_requeires_grad(self.models["encoder"])
-            set_requeires_grad(self.models["pose_encoder"])
-            set_requeires_grad(self.models["pose"])
-        elif self.opt.join:
-            set_requeires_grad(self.models["pose_encoder"])
-            set_requeires_grad(self.models["pose"])
-            self.parameters_to_train += list(self.models["encoder"].parameters())
-            self.parameters_to_train += list(self.models["depth"].parameters())
-        else:
-            self.parameters_to_train += list(self.models["encoder"].parameters())
-            self.parameters_to_train += list(self.models["depth"].parameters())
-            self.parameters_to_train += list(self.models["pose_encoder"].parameters())
-            self.parameters_to_train += list(self.models["pose"].parameters())
-
-        parameters_to_train = self.parameters_to_train
-        self.model_optimizer = optim.Adam(parameters_to_train, self.opt.learning_rate)
-        self.model_lr_scheduler = optim.lr_scheduler.StepLR(
-            self.model_optimizer, self.opt.scheduler_step_size, 0.1)
-        if self.opt.gan or self.opt.gan2:
-            self.D_optimizer = optim.Adam(self.parameters_D, 1e-4)
-            self.model_lr_scheduler_D = optim.lr_scheduler.StepLR(self.D_optimizer, self.opt.scheduler_step_size, 0.1)
-            if self.opt.gan:
-                self.pix2pix = networks.pix2pix_loss_iter(self.model_optimizer, self.D_optimizer, self.models["netD"], self.opt, self.crop_h, self.crop_w, mode=self.crop_mode,)
-            else:
-                self.pix2pix = networks.pix2pix_loss_iter2(self.model_optimizer, self.D_optimizer, self.models["netD"], self.opt, self.crop_h, self.crop_w, mode=self.crop_mode,)
         if self.opt.load_weights_folder is not None:
             self.load_model()
 
@@ -134,7 +107,7 @@ class Trainer:
                          "mydataset":datasets.MyDataset}
         self.dataset = datasets_dict[self.opt.dataset]
 
-        fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files_p_total_01_fs.txt")
+        fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files_p_total_01_f.txt")
         train_filenames = readlines(fpath.format("train"))
         
         img_ext = '.png' if self.opt.png else '.jpg'
@@ -148,15 +121,6 @@ class Trainer:
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size,
             num_workers=self.opt.num_workers, pin_memory=True, drop_last=True,sampler=DistributedSampler(train_dataset))
-        if self.opt.val:
-            val_filenames = readlines(fpath.format("val"))
-            val_dataset = self.dataset(
-                self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
-                self.opt.frame_ids, 4, is_train=False, img_ext=img_ext, refine=self.opt.refine, crop_mode=self.crop_mode,crop_h=self.crop_h, crop_w=self.crop_w)
-            self.val_loader = DataLoader(
-                val_dataset, self.opt.batch_size,
-                num_workers=self.opt.num_workers, pin_memory=True, drop_last=True,sampler=DistributedSampler(val_dataset))
-            self.val_iter = iter(self.val_loader)
 
         self.writers = {}
         modes = ["train"]
@@ -168,7 +132,6 @@ class Trainer:
         self.depth_metric_names = [
             "de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
 
-        self.save_opts()
         if self.opt.join:
             self.model_wrapper = model_joint_wrapper(self.models,self.opt,self.device)
         else:
@@ -199,15 +162,12 @@ class Trainer:
         self.epoch = 0
         self.step = 0
         self.start_time = time.time()
-        for self.epoch in range(self.opt.num_epochs):
-            self.run_epoch()
-            if self.epoch > 5 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
-                self.save_model()
+        self.run_epoch()
 
     def run_epoch(self):
         """Run a single epoch of training and validation
         """
-        self.set_train()
+        self.set_eval()
         tbar = tqdm(self.train_loader)
 
         for batch_idx, inputs in enumerate(tbar):
@@ -216,22 +176,11 @@ class Trainer:
 
             outputs, losses = self.model_wrapper.forward(inputs,self.epoch)
 
-            if self.opt.gan or self.opt.gan2:
-                self.pix2pix(inputs, outputs, losses, self.epoch)
-            else:
-                self.model_optimizer.zero_grad()
-                # with amp.scale_loss(losses["loss"],self.model_optimizer) as scaled_loss:
-                #     scaled_loss.backward()
-                #losses["loss"] = losses["loss"].mean()
-                losses["loss"].backward()
-                self.model_optimizer.step()
 
             duration = time.time() - before_op_time
 
             # log less frequently after the first 2000 steps to save time & disk space
-            early_phase = batch_idx % self.opt.log_frequency == 0 and self.step < 2000
-            late_phase = self.step % 2000 == 0
-            last_epoch = self.epoch > 18 and batch_idx % 30 == 0
+            early_phase = batch_idx % self.opt.log_frequency == 0 
 
             if (self.opt.gan or self.opt.gan2):
                 if outputs["D_update"]:
@@ -242,17 +191,17 @@ class Trainer:
                     tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
             else:
                 tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
-            if last_epoch:
+            
+            index = inputs["index"].cpu().data.numpy()
+            with open('./splits/mydataset/bad_seq_total_01.txt','a') as f:
+                f.write('{} {}\r\n'.format(index,losses["loss"]))
+
+            if early_phase:
                 # if "depth_gt" in inputs:
                 #     self.compute_depth_losses(inputs, outputs, losses)
                 if torch.distributed.get_rank()==0:
                     self.log("train", inputs, outputs, losses)
-                # if self.opt.val:
-                #     self.val()
-            # del inputs, outputs, losses
-            # torch.cuda.empty_cache()
             self.step += 1
-        self.model_lr_scheduler.step()
 
     def val(self):
         """Validate the model on a single minibatch
@@ -332,7 +281,7 @@ class Trainer:
             writer.add_scalar("{}".format(l), v, self.step)
 
         for j in range(min(4, self.opt.batch_size)):  # write a maxmimum of four images
-            writer.add_image("depth_gt_{}".format(j),inputs["depth_gt_part"][j].data, self.step)
+            writer.add_image("depth_gt_{}".format(j),inputs["depth_gt_part"][j].data)
             for s in scales_:
                 for frame_id in self.opt.frame_ids:
                     if s != 'r':
@@ -358,35 +307,6 @@ class Trainer:
                     writer.add_image(
                         "automask_{}/{}".format(s, j),
                         outputs["identity_selection/{}".format(s)][j][None, ...], self.step)
-
-    def save_opts(self):
-        """Save options to disk so we know what we ran this experiment with
-        """
-        models_dir = os.path.join(self.log_path, "models")
-        os.makedirs(models_dir,exist_ok=True)
-        to_save = self.opt.__dict__.copy()
-
-        with open(os.path.join(models_dir, 'opt.json'), 'w') as f:
-            json.dump(to_save, f, indent=2)
-
-    def save_model(self):
-        """Save model weights to disk
-        """
-        save_folder = os.path.join(self.log_path, "models", "weights_{}".format(self.epoch))
-        os.makedirs(save_folder,exist_ok=True)
-
-        for model_name, model in self.models.items():
-            save_path = os.path.join(save_folder, "{}.pth".format(model_name))
-            to_save = model.state_dict()
-            if model_name == 'encoder':
-                # save the sizes - these are needed at prediction time
-                to_save['height'] = self.opt.height
-                to_save['width'] = self.opt.width
-                to_save['use_stereo'] = self.opt.use_stereo
-            torch.save(to_save, save_path)
-
-        save_path = os.path.join(save_folder, "{}.pth".format("adam"))
-        torch.save(self.model_optimizer.state_dict(), save_path)
 
     def load_model(self):
         """Load model(s) from disk

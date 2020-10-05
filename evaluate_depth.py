@@ -137,7 +137,12 @@ def evaluate(opt):
         depth_decoder.eval()
         if refine and not opt.dropout:
             renet_path = os.path.join(opt.load_weights_folder, "mid_refine.pth")
-            mid_refine = networks.Iterative_Propagate(crop_h,crop_w,opt.crop_mode)
+            if opt.refine_model == '3D':
+                mid_refine = networks.Iterative_3DPropagate(crop_h,crop_w,opt.crop_mode)
+            elif opt.refine_model == '18':
+                mid_refine = networks.Iterative_Propagate2(crop_h,crop_w,opt.crop_mode,False)
+            else:
+                mid_refine = networks.Iterative_Propagate(crop_h,crop_w,opt.crop_mode)
             load_model_dict(renet_path,mid_refine)
             mid_refine.cuda()
             mid_refine.eval()

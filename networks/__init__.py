@@ -11,4 +11,5 @@ from .depth_decoder2 import DepthDecoder2
 from .pose_decoder2 import PoseDecoder2
 from .gan_module import *
 from .depth_refine2 import Iterative_Propagate
+from .depth_refine2 import Iterative_Propagate2
 from .depth_refine2 import Iterative_3DPropagate
