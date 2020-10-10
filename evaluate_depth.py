@@ -71,7 +71,7 @@ def batch_post_process_disparity(l_disp, r_disp):
     return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
 
 def load_model_dict(model_path,model):
-    pretrained_model_dict = torch.load(model_path)
+    pretrained_model_dict = torch.load(model_path,map_location=torch.device("cpu"))
     model_dict = model.state_dict()
     model.load_state_dict({k.replace('module.',''): v for k, v in pretrained_model_dict.items() if k.replace('module.','') in model_dict})
 
@@ -114,7 +114,7 @@ def evaluate(opt):
         else:
             crop_h = None
             crop_w = None
-        encoder_dict = torch.load(encoder_path)
+        encoder_dict = torch.load(encoder_path,map_location=torch.device("cpu"))
 
         dataset = datasets.KITTIDepthDataset(opt.data_path, filenames,
                                            encoder_dict['height'], encoder_dict['width'],
@@ -128,7 +128,7 @@ def evaluate(opt):
         model_dict = encoder.state_dict()
         
         encoder.load_state_dict({k.replace('module.',''): v for k, v in encoder_dict.items() if k.replace('module.','') in model_dict})
-        depth_decoder_dict = torch.load(decoder_path)
+        depth_decoder_dict = torch.load(decoder_path,map_location=torch.device("cpu"))
         depth_decoder.load_state_dict({k.replace('module.',''): v for k, v in depth_decoder_dict.items()})
 
         encoder.cuda()

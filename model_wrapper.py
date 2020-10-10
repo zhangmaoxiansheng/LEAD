@@ -189,7 +189,8 @@ class model_wrapper(nn.Module):
                 disp_part_gt = self.crop(outputs["disp_gt_part"],h,w)
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
-                depth_loss += depth_ssim_loss * 0.15 + depth_l1_loss * 0.85 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
+                depth_loss = depth_l1_loss * 0.25
+                #depth_loss += depth_ssim_loss * 0.15 + depth_l1_loss * 0.85 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
                 losses["loss/depth_ssim{}".format(scale)] = depth_ssim_loss
             else:
                 target = inputs[("color", 0, source_scale)]
