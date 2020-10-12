@@ -201,7 +201,7 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.run_epoch()
-            if self.epoch > 5 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
+            if self.epoch > 35 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
                 self.save_model()
 
     def run_epoch(self):

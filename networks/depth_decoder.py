@@ -30,7 +30,7 @@ class DepthDecoder(nn.Module):
         if self.training:
             self.P = 0.1
         else:
-            self.P = 0.2
+            self.P = 0.5
 
         # decoder
         self.convs = OrderedDict()

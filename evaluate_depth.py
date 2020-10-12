@@ -135,7 +135,7 @@ def evaluate(opt):
         encoder.eval()
         depth_decoder.cuda()
         depth_decoder.eval()
-        if refine and not opt.dropout:
+        if refine:
             renet_path = os.path.join(opt.load_weights_folder, "mid_refine.pth")
             if opt.refine_model == '3D':
                 mid_refine = networks.Iterative_3DPropagate(crop_h,crop_w,opt.crop_mode)
@@ -207,7 +207,7 @@ def evaluate(opt):
                         else:
                             dep_last = outputs2[("disp",i-1)]
                         for it in range(iter_time):
-                            output_f = depth_ref(features_init,True)
+                            output_f = depth_decoder(features_init,True)
                             stage_output,error = mid_refine.eval_step(output_f["disp_feature"],disp_blur,disp_part_gt,input_color,i,dep_last,depth_part_gt)
                             output_save[i].append(stage_output.cpu()[:, 0].numpy())
                             error_saved.append(error.cpu().numpy())

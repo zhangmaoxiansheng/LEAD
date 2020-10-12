@@ -110,7 +110,7 @@ class Iterative_Propagate(nn.Module):
                 scale = 1
         else:
             scale = 1
-            print("warning dep[dep_last>0] is empty,stage is %d"%stage)
+            #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
         return dep
         
@@ -144,10 +144,11 @@ class Iterative_Propagate(nn.Module):
     def eval_step(self, features, blur_depth, gt_part, rgb, stage, dep_last,depth_gt):
         gt = gt_part.clone()
         all_scale = gt / blur_depth
-        blur_depth_o, scale = self.scale_adjust(gt,blur_depth)
+        blur_depth_o = self.scale_adjust(gt,blur_depth)
         gt_crop = self.crop(gt,self.crop_h[stage],self.crop_w[stage])
         gt[all_scale>1.2] = 0
         gt[all_scale<0.8]=0
+        self.gt = gt
         #gt_crop = self.crop(gt,self.crop_h[stage],self.crop_w[stage])
         if stage == 0:
             dep_last = self.crop(gt,self.crop_h[stage],self.crop_w[stage])
