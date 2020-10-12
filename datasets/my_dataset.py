@@ -211,10 +211,12 @@ class My_MonoDataset(data.Dataset):
             del inputs[("color_aug", i, -1)]
 
         if self.load_depth:
+            #kernel = np.ones((3, 3), np.uint8)
             depth_gt = self.get_depth(folder, frame_index, side, do_flip)
+            
             kernel = np.ones((3, 3), np.uint8)
-            #kernel = np.ones((7, 7), np.uint8)
             depth_gt_dilated = cv2.dilate(depth_gt, kernel)
+            #depth_gt_dilated = np.ascontiguousarray(depth_gt)
             inputs["depth_gt_part"] = torch.from_numpy(depth_gt_dilated).unsqueeze(0)
             #inputs["mask"] = torch.from_numpy(mask).unsqueeze(0)
             #inputs["mask_edge"] = torch.from_numpy(mask_edge).unsqueeze(0)
@@ -268,14 +270,14 @@ class MyDataset(My_MonoDataset):
         depth_path = os.path.join(
             self.data_path,
             folder,
-            'depth_sparse',
+            'depth',
             f_str)
         depth_gt = np.load(depth_path).astype(np.float32)
 
         if do_flip:
             depth_gt = np.fliplr(depth_gt)
         depth_gt[depth_gt>600] = 0
-        #depth_gt[depth_gt<4] = 0
+        depth_gt[depth_gt<2.5] = 0
         return depth_gt
 
 
