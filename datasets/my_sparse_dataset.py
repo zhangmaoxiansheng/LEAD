@@ -73,7 +73,6 @@ class My_MonoDataset(data.Dataset):
         self.crop_h = crop_h
         self.crop_w = crop_w
 
-
         # We need to specify augmentations differently in newer versions of torchvision.
         # We first try the newer tuple version; if this fails we fall back to scalars
         try:
@@ -173,7 +172,7 @@ class My_MonoDataset(data.Dataset):
         # adjusting intrinsics to match each scale in the pyramid
         
         if self.refine:
-            for scale in range(len(self.crop_h)):
+            for scale in range(5):
                 K = self.K.copy()
 
                 K[0, 0] *= self.width
@@ -215,8 +214,6 @@ class My_MonoDataset(data.Dataset):
             #kernel = np.ones((3, 3), np.uint8)
             depth_gt = self.get_depth(folder, frame_index, side, do_flip)
             
-            # kernel = np.ones((3, 3), np.uint8)
-            # depth_gt_dilated = cv2.dilate(depth_gt, kernel)
             depth_gt_dilated = np.ascontiguousarray(depth_gt)
             inputs["depth_gt_part"] = torch.from_numpy(depth_gt_dilated).unsqueeze(0)
             #inputs["mask"] = torch.from_numpy(mask).unsqueeze(0)
@@ -236,7 +233,7 @@ class My_MonoDataset(data.Dataset):
 
 
 
-class MyDataset(My_MonoDataset):
+class My_s_Dataset(My_MonoDataset):
     """Superclass for different types of KITTI dataset loaders
     """
     def __init__(self, *args, **kwargs):

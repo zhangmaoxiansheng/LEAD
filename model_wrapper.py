@@ -22,7 +22,7 @@ import copy
 import pdb
 
 class model_wrapper(nn.Module):
-    def __init__(self,models,opt,device):
+    def __init__(self,models,opt,device,crop_h,crop_w):
         super().__init__()
         self.models = models
         self.opt = opt
@@ -37,12 +37,11 @@ class model_wrapper(nn.Module):
         assert self.opt.frame_ids[0] == 0, "frame_ids must start with 0"
         if self.opt.refine:
             self.crop_mode = opt.crop_mode
-            if self.crop_mode == 'b' or self.crop_mode == 'cl':
-                self.crop_h = [128,168,192,192,192]
-                self.crop_w = [192,256,384,448,640]
-            else:
-                self.crop_h = [96,128,160,192,192]
-                self.crop_w = [192,256,384,448,640]
+            self.crop_h = crop_h
+            self.crop_w = crop_w
+        else:
+            self.crop_h = None
+            self.crop_w = None
         
         if not self.opt.no_ssim:
             self.ssim = SSIM()
@@ -190,7 +189,7 @@ class model_wrapper(nn.Module):
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
                 #depth_loss = depth_l1_loss * 0.25
-                depth_loss += depth_ssim_loss * 0.15 + depth_l1_loss * 0.85 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
+                depth_loss += (depth_ssim_loss * 0.15 + depth_l1_loss * 0.85)*3 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
                 losses["loss/depth_ssim{}".format(scale)] = depth_ssim_loss
             else:
                 target = inputs[("color", 0, source_scale)]

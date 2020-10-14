@@ -45,7 +45,7 @@ class MonodepthOptions:
                                  type=str,
                                  help="dataset to train on",
                                  default="kitti_depth",
-                                 choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test",'mydataset'])
+                                 choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test",'mydataset','my_sparse_dataset'])
         self.parser.add_argument("--png",
                                  help="if set, trains from raw KITTI png files (instead of jpgs)",
                                  action="store_false")

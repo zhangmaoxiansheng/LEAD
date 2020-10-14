@@ -67,7 +67,7 @@ class pix2pix_loss(nn.Module):
         self.refine_stage = list(range(opt.refine_stage))
         self.frame = [1]#opt.frame_ids[1:]
 
-        self.stage_weight = [0.2,0.5,0.8,1]
+        self.stage_weight = [0.2,0.5,1,1]
         if len(self.refine_stage) > 4:
             #self.stage_weight = [0.2,0.2,0.5,0.8,1]
             self.stage_weight = [0.1,0.1,0.1,0.3,0.5]
@@ -320,7 +320,8 @@ class pix2pix_loss_iter2(pix2pix_loss):
                 GAN_loss_total += GAN_loss_s
                 losses["loss/G_{}".format(s)] = GAN_loss_total 
             losses["loss/G_total"] = GAN_loss_total / len(self.refine_stage)
-            losses["loss"] += losses["loss/G_total"] * 0.05
+            #losses["loss"] += losses["loss/G_total"] * 0.05
+            losses["loss"] += losses["loss/G_total"] * 0.002
         losses["loss"].backward()
         return losses
 

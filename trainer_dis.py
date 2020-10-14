@@ -55,8 +55,10 @@ class Trainer:
                 self.crop_h = [128,168,192,192,192]
                 self.crop_w = [192,256,384,448,640]
             else:
-                self.crop_h = [96,128,160,192,192]
-                self.crop_w = [192,256,384,448,640]
+                # self.crop_h = [96,128,160,192,192]
+                # self.crop_w = [192,256,384,448,640]
+                self.crop_h = [128,192,256]
+                self.crop_w = [192,288,384]
         else:
             self.crop_h = None
             self.crop_w = None
@@ -131,7 +133,8 @@ class Trainer:
         datasets_dict = {"kitti": datasets.KITTIRAWDataset,
                          "kitti_odom": datasets.KITTIOdomDataset,
                          "kitti_depth":datasets.KITTIDepthDataset,
-                         "mydataset":datasets.MyDataset}
+                         "mydataset":datasets.MyDataset,
+                         "my_sparse_dataset":datasets.My_s_Dataset}
         self.dataset = datasets_dict[self.opt.dataset]
 
         fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files_p_total_01_fs.txt")
@@ -172,7 +175,7 @@ class Trainer:
         if self.opt.join:
             self.model_wrapper = model_joint_wrapper(self.models,self.opt,self.device)
         else:
-            self.model_wrapper = model_wrapper(self.models,self.opt,self.device)
+            self.model_wrapper = model_wrapper(self.models,self.opt,self.device,self.crop_h,self.crop_w)
         self.model_wrapper.to(self.device)
         #amp.initialize(list(self.models.values()),self.model_optimizer,opt_level="O1")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -201,7 +204,7 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.run_epoch()
-            if self.epoch > 35 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
+            if self.epoch > 15 and (self.epoch + 1) % self.opt.save_frequency == 0 and torch.distributed.get_rank()==0:
                 self.save_model()
 
     def run_epoch(self):
@@ -230,7 +233,7 @@ class Trainer:
 
             # log less frequently after the first 2000 steps to save time & disk space
             early_phase = batch_idx % self.opt.log_frequency == 0 and self.step < 2000
-            late_phase = self.step % 2000 == 0
+            late_phase = self.step % 1000 == 0
             last_epoch = self.epoch > 18 and batch_idx % 30 == 0
 
             if (self.opt.gan or self.opt.gan2):
@@ -242,7 +245,7 @@ class Trainer:
                     tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
             else:
                 tbar.set_description("epoch {:>3} | batch {:>6} | loss: {:.5f}".format(self.epoch, batch_idx, losses["loss"].cpu().data))
-            if last_epoch:
+            if early_phase or late_phase:
                 # if "depth_gt" in inputs:
                 #     self.compute_depth_losses(inputs, outputs, losses)
                 if torch.distributed.get_rank()==0:
@@ -325,7 +328,10 @@ class Trainer:
         """Write an event to the tensorboard events file
         """
         writer = self.writers[mode]
-        scales_ = self.opt.scales.copy()
+        if self.opt.refine:
+            scales_ = range(self.opt.refine_stage)
+        else:
+            scales_ = self.opt.scales.copy()
         # if self.refine:
         #     scales_.append('r')
         for l, v in losses.items():
