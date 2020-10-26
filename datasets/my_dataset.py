@@ -271,7 +271,7 @@ class MyDataset(My_MonoDataset):
         depth_path = os.path.join(
             self.data_path,
             folder,
-            'depth_sparse',
+            'depth',
             f_str)
         depth_gt = np.load(depth_path).astype(np.float32)
 

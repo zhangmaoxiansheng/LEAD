@@ -5,7 +5,7 @@ from .pose_cnn import PoseCNN
 #from .depth_refine import Simple_Propagate
 #from .depth_refine import U_refine
 #from .depth_refine import Iterative_Propagate
-#from .depth_refine import Iterative_Propagate_old
+from .depth_refine import Iterative_Propagate_old
 #from .depth_refine import Iterative_Propagate_seq
 from .depth_decoder2 import DepthDecoder2
 from .pose_decoder2 import PoseDecoder2

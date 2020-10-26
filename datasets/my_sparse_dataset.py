@@ -172,7 +172,7 @@ class My_MonoDataset(data.Dataset):
         # adjusting intrinsics to match each scale in the pyramid
         
         if self.refine:
-            for scale in range(5):
+            for scale in range(len(self.crop_h)):
                 K = self.K.copy()
 
                 K[0, 0] *= self.width
@@ -268,7 +268,7 @@ class My_s_Dataset(My_MonoDataset):
         depth_path = os.path.join(
             self.data_path,
             folder,
-            'depth_sparse',
+            'depth_sparse_1',
             f_str)
         depth_gt = np.load(depth_path).astype(np.float32)
 

@@ -32,26 +32,27 @@ class Iterative_Propagate(nn.Module):
                             ConvBlock(32,16),
                             ConvBlock(16,8),
                             Conv3x3(8,1),nn.Sigmoid())
-        self.model_ref2 = nn.Sequential(ConvBlock(self.in_channels,32),
-                            ConvBlock(32,32),
-                            ConvBlock(32,64),
-                            ConvBlock(64,32),
-                            ConvBlock(32,16),
-                            Conv3x3(16,1),nn.Sigmoid())
-        self.model_ref3 = nn.Sequential(ConvBlock(self.in_channels,32),
-                            ConvBlock(32,32,2),
-                            ConvBlock(32,64,4),
-                            ConvBlock(64,32,2),
-                            ConvBlock(32,16),
-                            Conv3x3(16,1),nn.Sigmoid())
-        self.model_ref4 = nn.Sequential(ConvBlock(self.in_channels,32),
-                            ConvBlock(32,32,2),
-                            ConvBlock(32,64,4),
-                            ConvBlock(64,32,2),
-                            ConvBlock(32,16),
-                            Conv3x3(16,1),nn.Sigmoid())
+        # self.model_ref2 = nn.Sequential(ConvBlock(self.in_channels,32),
+        #                     ConvBlock(32,32),
+        #                     ConvBlock(32,64),
+        #                     ConvBlock(64,32),
+        #                     ConvBlock(32,16),
+        #                     Conv3x3(16,1),nn.Sigmoid())
+        # self.model_ref3 = nn.Sequential(ConvBlock(self.in_channels,32),
+        #                     ConvBlock(32,32,2),
+        #                     ConvBlock(32,64,4),
+        #                     ConvBlock(64,32,2),
+        #                     ConvBlock(32,16),
+        #                     Conv3x3(16,1),nn.Sigmoid())
+        # self.model_ref4 = nn.Sequential(ConvBlock(self.in_channels,32),
+        #                     ConvBlock(32,32,2),
+        #                     ConvBlock(32,64,4),
+        #                     ConvBlock(64,32,2),
+        #                     ConvBlock(32,16),
+        #                     Conv3x3(16,1),nn.Sigmoid())
 
-        self.models = nn.ModuleList([self.model_ref0,self.model_ref1,self.model_ref2,self.model_ref3,self.model_ref4])
+        #self.models = nn.ModuleList([self.model_ref0,self.model_ref1,self.model_ref2,self.model_ref3,self.model_ref4])
+        self.models = nn.ModuleList([self.model_ref0,self.model_ref1])
         #self.dep_enc = Depth_encoder()
         self.propagate_time = 1
         self.dropout = dropout

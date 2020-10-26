@@ -321,7 +321,8 @@ class pix2pix_loss_iter2(pix2pix_loss):
                 losses["loss/G_{}".format(s)] = GAN_loss_total 
             losses["loss/G_total"] = GAN_loss_total / len(self.refine_stage)
             #losses["loss"] += losses["loss/G_total"] * 0.05
-            losses["loss"] += losses["loss/G_total"] * 0.002
+            #losses["loss"] += losses["loss/G_total"] * 0.002
+            losses["loss"] += losses["loss/G_total"] * 0.02
         losses["loss"].backward()
         return losses
 
