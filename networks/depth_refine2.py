@@ -108,11 +108,14 @@ class Iterative_Propagate(nn.Module):
             if torch.median(dep[dep_last>0]) > 0:
                 scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
             else:
+                print('!')
                 scale = 1
         else:
             scale = 1
+            print('!!')
             #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
+        print(scale)
         return dep
         
     
@@ -182,8 +185,8 @@ class Iterative_Propagate(nn.Module):
         #print(scale)
         all_scale = gt / blur_depth
         gt_origin = gt.clone()
-        gt[all_scale>1.3] = 0
-        gt[all_scale<0.7] = 0
+        # gt[all_scale>1.3] = 0
+        # gt[all_scale<0.7] = 0
         self.gt = gt
         gt_mask = gt.sign()
         blur_depth = gt_mask * gt + (1-gt_mask) * blur_depth

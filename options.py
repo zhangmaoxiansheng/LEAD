@@ -270,11 +270,12 @@ class MonodepthOptions:
         self.parser.add_argument("--eval_out_dir",
                                  help="if set will output the disparities to this folder",
                                  type=str)
-        self.parser.add_argument("--post_process",
-                                 help="if set will perform the flipping post processing "
-                                      "from the original monodepth paper",
-                                 action="store_true")
-
+        self.parser.add_argument("--rgb_path",
+                                 help="if set will output the disparities to this folder",
+                                 type=str)
+        self.parser.add_argument("--dep_path",
+                                 help="if set will output the disparities to this folder",
+                                 type=str)
     def parse(self):
         self.options = self.parser.parse_args()
         return self.options

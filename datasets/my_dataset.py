@@ -271,14 +271,14 @@ class MyDataset(My_MonoDataset):
         depth_path = os.path.join(
             self.data_path,
             folder,
-            'depth',
+            'depth_sparse',
             f_str)
         depth_gt = np.load(depth_path).astype(np.float32)
 
         if do_flip:
             depth_gt = np.fliplr(depth_gt)
-        depth_gt[depth_gt>800] = 0
-        depth_gt[depth_gt<6] = 0
+        depth_gt[depth_gt>400] = 0
+        depth_gt[depth_gt<1.5] = 0
         return depth_gt
 
 
