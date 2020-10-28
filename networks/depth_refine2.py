@@ -108,14 +108,14 @@ class Iterative_Propagate(nn.Module):
             if torch.median(dep[dep_last>0]) > 0:
                 scale = torch.median(dep_last[dep_last>0]) / torch.median(dep[dep_last>0])
             else:
-                print('!')
+                #print('!')
                 scale = 1
         else:
             scale = 1
-            print('!!')
+            #print('!!')
             #print("warning dep[dep_last>0] is empty,stage is %d"%stage)
         dep = dep * scale
-        print(scale)
+        #print(scale)
         return dep
         
     

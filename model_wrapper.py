@@ -189,7 +189,7 @@ class model_wrapper(nn.Module):
                 depth_l1_loss = torch.mean((disp - disp_target).abs())
                 depth_ssim_loss = self.ssim(disp, disp_target).mean()
                 #depth_loss = depth_l1_loss * 0.25
-                depth_loss += (depth_ssim_loss * 0.15 + depth_l1_loss * 0.85)*3 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
+                depth_loss += depth_ssim_loss*0.2 #depth_ssim_loss * 0.85 + depth_l1_loss * 0.15
                 losses["loss/depth_ssim{}".format(scale)] = depth_ssim_loss
             else:
                 target = inputs[("color", 0, source_scale)]
@@ -198,7 +198,7 @@ class model_wrapper(nn.Module):
                 disp_part_gt = depth_to_disp(inputs["depth_gt_part"],self.opt.min_depth,self.opt.max_depth)
             
             mask = disp_part_gt>0
-            depth_loss += torch.abs(disp_pred[mask] - disp_part_gt[mask]).mean()
+            depth_loss += torch.abs(disp_pred[mask] - disp_part_gt[mask]).mean()*3
             losses["loss/depth_{}".format(scale)] = depth_loss
 
             for frame_id in self.opt.frame_ids[1:]:
@@ -247,6 +247,11 @@ class model_wrapper(nn.Module):
             
             loss += self.opt.disparity_smoothness * smooth_loss / (2 ** scale)
             loss += depth_loss
+            #special loss for our data
+            if (self.opt.refine and scale == sclaes[-1]) or not self.opt.refine
+                smooth_loss_aug = torch.mean(grad_disp_x[:,:,:,0.9*self.opt.height]) * self.opt.disparity_smoothness * 5
+                loss += smooth_loss_aug
+
             total_loss += loss * self.stage_weight[scale] if self.opt.refine else loss
             losses["loss/{}".format(scale)] = loss
 

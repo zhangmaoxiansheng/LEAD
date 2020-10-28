@@ -218,16 +218,28 @@ def predict(opt):
     pdb.set_trace()
     
 
-    gt = np.load('fuck_gt.npy').squeeze()
+    gt = np.load('eva_depth20.npy').squeeze()
+    gt_origin = np.load('fuck_gt.npy').squeeze()
+    gt[950:,:] = gt_origin[950:,:]
     
     mask2 = depth_input_origin > 0
     gt[mask2] = depth_input_origin[mask2]
     depth[mask2] = depth_input_origin[mask2]
-    
+    pdb.set_trace()
     mask = gt>0
     gt = gt[mask]
-    depth = depth[mask]
-    print(compute_errors(gt,depth))
+    a = depth[950:,:]
+    m = np.median(a)
+    a[a>m]=m
+    depth[950:,:] = a
+    depth_m = depth[mask]
+    #depth = depth * np.median(gt / depth)
+    # error = np.abs(gt-depth)
+    # pdb.set_trace()
+    # mask3 = error > 5
+    # gt[mask3] = depth[mask3]
+    pdb.set_trace()
+    print(compute_errors(gt,depth_m))
 
     pdb.set_trace()
 
