@@ -248,8 +248,8 @@ class model_wrapper(nn.Module):
             loss += self.opt.disparity_smoothness * smooth_loss / (2 ** scale)
             loss += depth_loss
             #special loss for our data
-            if (self.opt.refine and scale == sclaes[-1]) or not self.opt.refine
-                smooth_loss_aug = torch.mean(grad_disp_x[:,:,:,0.9*self.opt.height]) * self.opt.disparity_smoothness * 5
+            if (self.opt.refine and scale == sclaes[-1]) or (not self.opt.refine and scale == 0):
+                smooth_loss_aug = torch.mean(grad_disp_y[:,:,int(0.9*self.opt.height):,:]) * self.opt.disparity_smoothness * 5
                 loss += smooth_loss_aug
 
             total_loss += loss * self.stage_weight[scale] if self.opt.refine else loss
